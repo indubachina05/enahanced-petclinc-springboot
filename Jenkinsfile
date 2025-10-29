@@ -1,119 +1,113 @@
 pipeline {
-    agent any
-    tools {
-        maven 'maven'
+  agent any
+
+  environment {
+    REGISTRY = "luckyregistryindu.azurecr.io"
+    IMAGE_NAME = "petclinic"
+    IMAGE_TAG = "${env.BUILD_NUMBER}"
+    ACR_CREDS = credentials('acr-admin')      // Add Docker/ACR creds in Jenkins
+    AZURE_SP = credentials('azure-sp-creds')  // clientId:clientSecret style or full JSON
+    SONAR_TOKEN = credentials('sonarcloud-token')
+    AZURE_SUBSCRIPTION = "16627783-b6dd-49c9-9545-dc269621eb66"
+    RESOURCE_GROUP = "demo11"
+    AKS_NAME = "lucky-aks-cluster11"
+  }
+
+  stages {
+    stage('Checkout') {
+      steps {
+        checkout scm
+      }
     }
-    environment{
-        IMAGE_NAME = 'springbootapp'
-        IMAGE_TAG = 'latest'
-        TENANT_ID ='ec78375d-0db0-42cf-82a6-2e6403e95936'
-        ACR_NAME = 'springbootdockerreg'
-        ACR_LOGIN_SERVER = 'springbootdockerreg.azurecr.io'
-        FULL_IMAGE_NAME = "${ACR_LOGIN_SERVER}/${IMAGE_NAME}:${IMAGE_TAG}"
-        RG              = "socgen"
-        NAME            = "myAKSCluster"
+
+    stage('Maven Build') {
+      steps {
+        sh 'mvn -B -DskipTests=false clean package'
+        archiveArtifacts artifacts: 'target/*.jar', fingerprint: true
+      }
     }
-    stages {
-        stage('Checkout FROM GIT') {
-            steps {
-                git branch: 'prod' , url: 'https://github.com/bkrrajmali/enahanced-petclinc-springboot.git'
+
+    stage('SonarCloud Analysis') {
+      steps {
+        withEnv(["SONAR_TOKEN=${SONAR_TOKEN}"]) {
+          sh '''
+            mvn sonar:sonar \
+              -Dsonar.projectKey=petclinic \
+              -Dsonar.host.url=https://sonarcloud.io \
+              -Dsonar.login=$SONAR_TOKEN
+          '''
         }
       }
-        // stage('Validate with Maven ') {
-        //     steps {
-        //         sh 'mvn validate'
-        //     }
-        // }
-        // stage('Compile with Maven ') {
-        //     steps {
-        //         sh 'mvn compile'
-        //     }
-        // }
-        // stage('Sonar Analysis ') {
-        //     environment {
-        //         SCANNER_HOME = tool 'Sonar-scanner'
-        //     }   
-        //     steps {
-        //         withSonarQubeEnv('sonarserver') {
-        //             sh '''${SCANNER_HOME}/bin/sonar-scanner \
-        //             -Dsonar.organization=bkrrajmali \
-        //             -Dsonar.projectName=springbootjavaapp \
-        //             -Dsonar.projectKey=springbootjavaapp \
-        //             -Dsonar.java.binaries=.
-        //           '''
-        //         }
-        //     }         
-        // }
-         stage('Maven Package ') {
-            steps {
-                sh 'mvn package'
-            }
-        }
-        // stage('Sonar Quality Gate') {
-        //     steps {
-        //         timeout(time: 1, unit: 'MINUTES') {
-        //             waitForQualityGate abortPipeline: true, credentialsId: 'sonar'
-        //         }
-        //     }
-        // }
-        stage('Docker Build') {
-            steps {
-                script {
-                    echo "Building Docker Image......."
-                    docker.build ("${IMAGE_NAME}:${IMAGE_TAG}") 
-                }
-            }
-        }
-        stage('Azure Login TO ACR') {
-            steps {
-                withCredentials([usernamePassword(credentialsId: 'azure-acr-spn', usernameVariable: 'AZURE_USERNAME', passwordVariable: 'AZURE_PASSWORD')]) {
-                    script {
-                        echo "Azure Login Started"
-                        sh '''
-                        az login --service-principal -u $AZURE_USERNAME -p $AZURE_PASSWORD --tenant $TENANT_ID
-                        az acr login --name $ACR_NAME
-                        '''
-                    }
-                }
-            }
-        }
-        stage('Docker Push to ACR') {
-            steps {
-                script {
-                    echo "Docker Image Push to ACR"
-                    sh '''
-                    docker tag ${IMAGE_NAME}:${IMAGE_TAG} ${FULL_IMAGE_NAME}
-                   
-                    docker push ${FULL_IMAGE_NAME}
-                    '''
-                }
-            }
-        }
-        stage('Azure Login TO AKS') {
-            steps {
-                withCredentials([usernamePassword(credentialsId: 'azure-acr-spn', usernameVariable: 'AZURE_USERNAME', passwordVariable: 'AZURE_PASSWORD')]) {
-                    script {
-                        echo "Azure Login to AKS"
-                        sh '''
-                        az login --service-principal -u $AZURE_USERNAME -p $AZURE_PASSWORD --tenant $TENANT_ID
-                        az aks get-credentials --resource-group $RG --name $NAME --overwrite-existing
-                        '''
-                    }
-                }
-            }
-        }
-        stage('Deploy to AKS') {
-            steps {
-                withCredentials([usernamePassword(credentialsId: 'azure-acr-spn', usernameVariable: 'AZURE_USERNAME', passwordVariable: 'AZURE_PASSWORD')]) {
-                    script {
-                        echo "Azure Login to AKS"
-                        sh '''
-                        az login --service-principal -u $AZURE_USERNAME -p $AZURE_PASSWORD --tenant $TENANT_ID
-                        kubectl apply -f k8s/sprinboot-deployment.yaml
-                        '''
-                    }
-                }
-            }
-        }
     }
+
+    stage('Docker Build & Push') {
+      steps {
+        script {
+          // login to ACR (admin user or use az acr login)
+          sh "docker login ${REGISTRY} -u ${ACR_CREDS_USR} -p ${ACR_CREDS_PSW}" // or use az acr login
+          sh "docker build -t ${REGISTRY}/${IMAGE_NAME}:${IMAGE_TAG} ."
+          sh "docker push ${REGISTRY}/${IMAGE_NAME}:${IMAGE_TAG}"
+        }
+      }
+    }
+
+    stage('Deploy to AKS') {
+      steps {
+        script {
+          // login to azure using service principal
+          sh """
+            az login --service-principal -u ${AZURE_SP_USR} -p ${AZURE_SP_PSW} --tenant ${AZURE_SP_TENANT}
+            az account set --subscription ${AZURE_SUBSCRIPTION}
+            az aks get-credentials --resource-group ${RESOURCE_GROUP} --name ${AKS_NAME} --overwrite-existing
+          """
+
+          // create/update Kubernetes deployment and service (simple example)
+          sh """
+            cat > k8s-deployment.yaml <<EOF
+            apiVersion: apps/v1
+            kind: Deployment
+            metadata:
+              name: petclinic-deployment
+            spec:
+              replicas: 1
+              selector:
+                matchLabels:
+                  app: petclinic
+              template:
+                metadata:
+                  labels:
+                    app: petclinic
+                spec:
+                  containers:
+                  - name: petclinic
+                    image: ${REGISTRY}/${IMAGE_NAME}:${IMAGE_TAG}
+                    ports:
+                    - containerPort: 8080
+            ---
+            apiVersion: v1
+            kind: Service
+            metadata:
+              name: petclinic-service
+            spec:
+              type: LoadBalancer
+              selector:
+                app: petclinic
+              ports:
+                - protocol: TCP
+                  port: 80
+                  targetPort: 8080
+            EOF
+
+            kubectl apply -f k8s-deployment.yaml
+          """
+        }
+      }
+    }
+  }
+
+  post {
+    always {
+      echo "Pipeline finished"
+    }
+  }
 }
