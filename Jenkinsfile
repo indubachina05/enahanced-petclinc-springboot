@@ -30,17 +30,19 @@ pipeline {
     }
 
     stage('SonarCloud Analysis') {
-      steps {
-        withEnv(["SONAR_TOKEN=${SONAR_TOKEN}"]) {
-          sh '''
-            mvn sonar:sonar \
-              -Dsonar.projectKey=petclinic \
-              -Dsonar.host.url=https://sonarcloud.io \
-              -Dsonar.login=$SONAR_TOKEN
-          '''
-        }
-      }
+  steps {
+    withCredentials([string(credentialsId: 'sonarcloud-token', variable: 'SONAR_TOKEN')]) {
+      sh '''
+        mvn -B sonar:sonar \
+          -Dsonar.projectKey=indubachina05_enahanced-petclinc-springboot \
+          -Dsonar.organization=indubachina05 \
+          -Dsonar.host.url=https://sonarcloud.io \
+          -Dsonar.login=$SONAR_TOKEN
+      '''
     }
+  }
+}
+
 
     stage('Docker Build & Push') {
       steps {
