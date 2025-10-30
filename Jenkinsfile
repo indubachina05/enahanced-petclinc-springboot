@@ -47,20 +47,21 @@ pipeline {
         }
 
         stage('Docker Build & Push') {
-            agent any // Ensure this stage runs on VM with Docker
+            agent any  // run on default Jenkins agent (your VM)
             steps {
                 script {
-                    // Login to ACR
+            // Login to ACR
                     sh "docker login ${REGISTRY} -u ${ACR_CREDS_USR} -p ${ACR_CREDS_PSW}"
 
-                    // Build and push with BuildKit
-                    sh """
-                        docker buildx create --use || true
-                        docker buildx build --platform linux/amd64 -t ${REGISTRY}/${IMAGE_NAME}:${IMAGE_TAG} --push .
-                    """
-                }
-            }
+            // Build and push Docker image (simple version)
+            sh """
+                docker build -t ${REGISTRY}/${IMAGE_NAME}:${IMAGE_TAG} .
+                docker push ${REGISTRY}/${IMAGE_NAME}:${IMAGE_TAG}
+            """
         }
+    }
+}
+
 
         stage('Deploy to AKS') {
             steps {
