@@ -6,14 +6,15 @@ pipeline {
     }
 
     environment {
-        REGISTRY           = "luckyregistryindu.azurecr.io"
-        IMAGE_NAME         = "petclinic"
-        IMAGE_TAG          = "${env.BUILD_NUMBER}"
-        SONAR_TOKEN        = credentials('sonarcloud-token')
+        REGISTRY        = "luckyregistryindu.azurecr.io"
+        IMAGE_NAME      = "petclinic"
+        IMAGE_TAG       = "${env.BUILD_NUMBER}"
+        ACR_CREDS       = credentials('acr-admin')          // Docker/ACR creds in Jenkins
+        SONAR_TOKEN     = credentials('sonarcloud-token')
         AZURE_SUBSCRIPTION = "16627783-b6dd-49c9-9545-dc269621eb66"
-        RESOURCE_GROUP     = "demo11"
-        AKS_NAME           = "lucky-aks-cluster11"
-        DOCKER_BUILDKIT    = "1"  // Enable BuildKit
+        RESOURCE_GROUP  = "demo11"
+        AKS_NAME        = "lucky-aks-cluster11"
+        DOCKER_BUILDKIT = "0"  // keep legacy builder to avoid BuildKit errors
     }
 
     stages {
@@ -51,7 +52,7 @@ pipeline {
                                                      usernameVariable: 'ACR_CREDS_USR',
                                                      passwordVariable: 'ACR_CREDS_PSW')]) {
                         sh """
-                            export DOCKER_BUILDKIT=1
+                            export DOCKER_BUILDKIT=0
                             docker login ${REGISTRY} -u $ACR_CREDS_USR -p $ACR_CREDS_PSW
                             docker build -t ${REGISTRY}/${IMAGE_NAME}:${IMAGE_TAG} .
                             docker push ${REGISTRY}/${IMAGE_NAME}:${IMAGE_TAG}
