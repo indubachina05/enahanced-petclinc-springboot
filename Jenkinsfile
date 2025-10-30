@@ -55,9 +55,10 @@ pipeline {
 
             // Build and push Docker image (simple version)
             sh """
-                docker build -t ${REGISTRY}/${IMAGE_NAME}:${IMAGE_TAG} .
-                docker push ${REGISTRY}/${IMAGE_NAME}:${IMAGE_TAG}
-            """
+export DOCKER_BUILDKIT=0
+docker build -t ${REGISTRY}/${IMAGE_NAME}:${IMAGE_TAG} .
+docker push ${REGISTRY}/${IMAGE_NAME}:${IMAGE_TAG}
+"""
         }
     }
 }
