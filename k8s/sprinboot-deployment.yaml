@@ -16,7 +16,7 @@ spec:
     spec:
       containers:
       - name: springboot-app
-        image: springbootdockerreg.azurecr.io/springbootapp:latest
+        image: luckyregistryindu.azurecr.io/petclinic:latest
         ports:
         - containerPort: 8080
       imagePullSecrets:
