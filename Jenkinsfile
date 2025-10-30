@@ -47,7 +47,7 @@ pipeline {
         }
 
         stage('Docker Build & Push') {
-            agent { label 'docker-vm' } // Ensure this stage runs on VM with Docker
+            agent any // Ensure this stage runs on VM with Docker
             steps {
                 script {
                     // Login to ACR
